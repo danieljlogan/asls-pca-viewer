@@ -2,10 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from sklearn.decomposition import PCA
 import base64
-from io import BytesIO
 
 # Page configuration
 st.set_page_config(
@@ -21,8 +19,6 @@ if 'selected_spectrum' not in st.session_state:
     st.session_state.selected_spectrum = None
 if 'selected_pixel' not in st.session_state:
     st.session_state.selected_pixel = None
-if 'pca_model' not in st.session_state:
-    st.session_state.pca_model = None
 if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = False
 
@@ -44,7 +40,7 @@ with st.sidebar:
             wavenumbers = df.iloc[:, 0].values
             data = df.iloc[:, 1:].values.T
             
-            # Reshape to spatial grid (assuming 63x74 grid)
+            # Reshape to spatial grid
             rows, cols = 63, 74
             spatial_data = data.reshape(rows, cols, -1)
             
@@ -53,8 +49,6 @@ with st.sidebar:
                 # SNV normalization
                 data_snv = (data - np.nanmean(data, axis=1, keepdims=True)) / \
                            np.nanstd(data, axis=1, keepdims=True)
-                
-                # Handle any remaining NaNs
                 data_snv = np.nan_to_num(data_snv)
                 
                 n_comps = st.slider("Number of Principal Components", 2, 10, 5)
@@ -74,7 +68,7 @@ with st.sidebar:
                 st.session_state.rows = rows
                 st.session_state.cols = cols
                 st.session_state.data_loaded = True
-                st.session_state.current_pc = 0  # Reset to PC1
+                st.session_state.current_pc = 0
                 
                 st.success(f"✅ Data loaded! {rows}x{cols} grid, {n_comps} PCs calculated")
                 
@@ -89,7 +83,6 @@ if st.session_state.data_loaded:
     
     with col_controls:
         st.subheader("🎮 Component Selection")
-        # Create buttons for PC selection
         pc_buttons = st.columns(min(st.session_state.n_comps, 5))
         for i in range(st.session_state.n_comps):
             col_idx = i % 5
@@ -106,18 +99,33 @@ if st.session_state.data_loaded:
         st.subheader("💾 Export Options")
         export_format = st.selectbox("Format", ["SVG", "PNG", "PDF"])
         export_dpi = st.selectbox("DPI", ["150", "300", "600"], index=1)
-        
-        if st.button("📸 Save All Plots", use_container_width=True):
-            st.info("Click save in each plot window below")
+    
+    # Function to handle click events on the map
+    def on_map_click():
+        """Callback function when user clicks on the spatial map"""
+        if hasattr(st.session_state, 'spatial_map_selection'):
+            selection = st.session_state.spatial_map_selection
+            if selection and len(selection.get('points', [])) > 0:
+                point = selection['points'][0]
+                # Plotly returns x and y coordinates
+                x = int(round(point.get('x', 0)))
+                y = int(round(point.get('y', 0)))
+                
+                # Validate bounds
+                if 0 <= x < st.session_state.cols and 0 <= y < st.session_state.rows:
+                    st.session_state.selected_spectrum = st.session_state.spatial_data[y, x, :]
+                    st.session_state.selected_pixel = (x, y)
     
     # Main plots
     col1, col2 = st.columns(2)
     
     with col1:
         st.subheader(f"📊 Spatial Map: PC{st.session_state.current_pc+1}")
-        # Spatial map with click interaction
+        st.markdown("*💡 Click anywhere on the map to view the Raman spectrum at that pixel*")
+        
         score_data = st.session_state.score_map[:, :, st.session_state.current_pc]
         
+        # Create the heatmap
         fig_map = go.Figure(data=go.Heatmap(
             z=score_data,
             colorscale='Viridis',
@@ -129,24 +137,41 @@ if st.session_state.data_loaded:
             height=500,
             xaxis_title="X Pixel",
             yaxis_title="Y Pixel",
-            hovermode='closest'
+            hovermode='closest',
+            clickmode='event+select'  # Enable click events
         )
         
-        # Display the map
-        st.plotly_chart(fig_map, use_container_width=True, key="spatial_map")
+        # Display with click event support - THIS IS THE KEY LINE
+        selected_points = st.plotly_chart(
+            fig_map, 
+            use_container_width=True, 
+            key="spatial_map_selection",
+            on_select="rerun",  # This enables selection events
+            selection_mode="points"  # Capture point clicks
+        )
         
-        # Manual pixel selection (since Plotly click events need JS)
-        st.markdown("**📍 Select Pixel Coordinates:**")
-        px_col1, px_col2, px_col3 = st.columns([1,1,2])
-        with px_col1:
-            x_pixel = st.number_input("X Pixel", 0, st.session_state.cols-1, 0, key="x_pixel")
-        with px_col2:
-            y_pixel = st.number_input("Y Pixel", 0, st.session_state.rows-1, 0, key="y_pixel")
-        with px_col3:
-            if st.button("🔍 Load Spectrum at Pixel", use_container_width=True):
-                st.session_state.selected_spectrum = st.session_state.spatial_data[y_pixel, x_pixel, :]
-                st.session_state.selected_pixel = (x_pixel, y_pixel)
-                st.success(f"Spectrum loaded from pixel ({x_pixel}, {y_pixel})")
+        # Process the click event
+        if selected_points and len(selected_points.get('selection', {}).get('points', [])) > 0:
+            point = selected_points['selection']['points'][0]
+            x = int(round(point.get('x', 0)))
+            y = int(round(point.get('y', 0)))
+            if 0 <= x < st.session_state.cols and 0 <= y < st.session_state.rows:
+                st.session_state.selected_spectrum = st.session_state.spatial_data[y, x, :]
+                st.session_state.selected_pixel = (x, y)
+                st.success(f"✅ Loaded spectrum from pixel ({x}, {y})")
+        
+        # Also keep manual entry for precision if needed
+        with st.expander("🎯 Manual Pixel Selection (optional)"):
+            px_col1, px_col2, px_col3 = st.columns([1,1,1])
+            with px_col1:
+                x_pixel = st.number_input("X Pixel", 0, st.session_state.cols-1, 0, key="manual_x")
+            with px_col2:
+                y_pixel = st.number_input("Y Pixel", 0, st.session_state.rows-1, 0, key="manual_y")
+            with px_col3:
+                if st.button("📥 Load Manual Spectrum"):
+                    st.session_state.selected_spectrum = st.session_state.spatial_data[y_pixel, x_pixel, :]
+                    st.session_state.selected_pixel = (x_pixel, y_pixel)
+                    st.success(f"Spectrum loaded from pixel ({x_pixel}, {y_pixel})")
     
     with col2:
         st.subheader(f"📈 Chemical Loading: PC{st.session_state.current_pc+1}")
@@ -214,10 +239,18 @@ if st.session_state.data_loaded:
                 st.markdown(href, unsafe_allow_html=True)
         
         with spec_col3:
-            if st.button("📋 Copy to Clipboard", use_container_width=True):
-                st.info("Select all (Ctrl+A) and copy from the plot")
+            st.download_button(
+                label="📋 Alternative Download",
+                data=pd.DataFrame({
+                    'Wavenumber': st.session_state.wavenumbers,
+                    'Intensity': st.session_state.selected_spectrum
+                }).to_csv(index=False),
+                file_name="raman_spectrum.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
     else:
-        st.info("👆 Click 'Load Spectrum at Pixel' to view a Raman spectrum")
+        st.info("👆 **Click anywhere on the spatial map** to view the Raman spectrum at that pixel location")
     
     # Variance explanation panel
     with st.expander("📊 Explained Variance Ratio"):
@@ -239,7 +272,6 @@ if st.session_state.data_loaded:
         st.plotly_chart(fig_var, use_container_width=True)
 
 else:
-    # Instructions when no data is loaded
     st.info("👈 Please upload your Baselined Raman data CSV file to begin")
     
     with st.expander("📖 Instructions"):
@@ -249,21 +281,16 @@ else:
         1. **Upload your data** using the sidebar on the left
         2. **Select number of PCs** for analysis
         3. **Click PC buttons** to switch between components
-        4. **Enter X/Y coordinates** and click 'Load Spectrum' to view Raman spectra
-        5. **Export plots** using the format selector and save buttons
-        
-        ### Expected data format:
-        - CSV file with wavenumbers in the first column
-        - Each subsequent column represents a Raman spectrum at a specific pixel
-        - Data will be reshaped to a 63x74 spatial grid (adjust rows/cols in code if needed)
+        4. **🎯 Click directly on the spatial map** to view Raman spectra at any pixel
+        5. **Export plots** using the format selector
         
         ### Features:
+        - **Click-to-load spectra** - Just click anywhere on the heatmap!
         - Interactive spatial maps of PC scores
         - Loading plots for chemical interpretation
-        - Extract and export individual spectra
+        - CSV export of spectral data
         - Variance explanation statistics
         """)
 
-# Footer
 st.markdown("---")
-st.caption("Raman PCA Interactive Viewer | Built with Streamlit & Plotly")
+st.caption("Raman PCA Interactive Viewer | Click on the spatial map to load spectra")
