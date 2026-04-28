@@ -1,0 +1,64 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "d2948894-c79e-446b-a793-0157d2a6b14b",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Python\n",
+    "__pycache__/\n",
+    "*.py[cod]\n",
+    "*$py.class\n",
+    "*.so\n",
+    ".Python\n",
+    "\n",
+    "# Virtual Environment\n",
+    "venv/\n",
+    "env/\n",
+    "ENV/\n",
+    ".env\n",
+    "\n",
+    "# IDE\n",
+    ".vscode/\n",
+    ".idea/\n",
+    "*.swp\n",
+    "*.swo\n",
+    "\n",
+    "# Data files (optional - don't commit large data)\n",
+    "*.csv\n",
+    "*.xlsx\n",
+    "!example_data.csv\n",
+    "\n",
+    "# Streamlit\n",
+    ".streamlit/secrets.toml\n",
+    "\n",
+    "# OS\n",
+    ".DS_Store\n",
+    "Thumbs.db"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python [conda env:base] *",
+   "language": "python",
+   "name": "conda-base-py"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.13.9"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
